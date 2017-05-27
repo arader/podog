@@ -4,3 +4,9 @@ version = "0.1.0"
 authors = ["arader <ardr@outlook.com>"]
 
 [dependencies]
+hyper = "0.10"
+hyper-native-tls = "0.2.2"
+serde = "1.0.8"
+serde_derive = "1.0.8"
+serde_json = "1.0.2"
+url = "1.4.0"
