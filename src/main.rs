@@ -1,3 +1,4 @@
+extern crate clap;
 extern crate hyper;
 extern crate hyper_native_tls;
 extern crate serde;
@@ -10,6 +11,8 @@ extern crate serde_derive;
 use std::env;
 use std::error::Error;
 use std::fs::File;
+
+use clap::{Arg, App};
 use hyper::Client;
 use hyper::net::HttpsConnector;
 use hyper_native_tls::NativeTlsClient;
@@ -88,12 +91,21 @@ fn push_msg(cfg: Config, msg: &str) -> Result<String, PodogError> {
 }
 
 fn main() {
+    let matches = App::new("podog")
+        .version("0.1.0")
+        .author("Andrew Rader <ardr@outlook.com>")
+        .about("CLI for Pushover notifications")
+        .arg(Arg::with_name("message")
+             .index(1)
+             .required(true))
+        .get_matches();
+
     let cfg: Config = match load_cfg() {
         Ok(c) => c,
         Err(_) => panic!("Failed to load cfg"),
     };
 
-    match push_msg(cfg, "this is a test") {
+    match push_msg(cfg, matches.value_of("message").unwrap()) {
         Ok(s) => println!("pushed!, request: {}", s),
         Err(e) => panic!("failed to push, {:?}", e),
     };

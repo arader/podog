@@ -4,6 +4,7 @@ version = "0.1.0"
 authors = ["arader <ardr@outlook.com>"]
 
 [dependencies]
+clap = "~2.24.0"
 hyper = "0.10"
 hyper-native-tls = "0.2.2"
 serde = "1.0.8"
