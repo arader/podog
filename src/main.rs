@@ -10,7 +10,6 @@ extern crate serde_derive;
 use std::env;
 use std::error::Error;
 use std::fs::File;
-use std::io::Read;
 use hyper::Client;
 use hyper::net::HttpsConnector;
 use hyper_native_tls::NativeTlsClient;
@@ -20,6 +19,40 @@ use url::form_urlencoded;
 struct Config {
     api_key: String,
     user_key: String,
+}
+
+#[derive(Deserialize)]
+struct PoResponse {
+    status: u32,
+    request: String,
+    #[serde(default)]
+    errors: Vec<String>,
+}
+
+#[derive(Debug)]
+enum PodogError {
+    Hyper(hyper::Error),
+    Tls(hyper_native_tls::native_tls::Error),
+    Parse(serde_json::Error),
+    Service(Vec<String>),
+}
+
+impl From<hyper::Error> for PodogError {
+    fn from(err: hyper::Error) -> PodogError {
+        PodogError::Hyper(err)
+    }
+}
+
+impl From<hyper_native_tls::native_tls::Error> for PodogError {
+    fn from(err: hyper_native_tls::native_tls::Error) -> PodogError {
+        PodogError::Tls(err)
+    }
+}
+
+impl From<serde_json::Error> for PodogError {
+    fn from(err: serde_json::Error) -> PodogError {
+        PodogError::Parse(err)
+    }
 }
 
 fn load_cfg() -> Result<Config, Box<Error>> {
@@ -33,7 +66,7 @@ fn load_cfg() -> Result<Config, Box<Error>> {
     Ok(cfg)
 }
 
-fn push_msg(cfg: Config, msg: &str) -> Result<(), Box<Error>> {
+fn push_msg(cfg: Config, msg: &str) -> Result<String, PodogError> {
     let query = vec![("token", cfg.api_key), ("user", cfg.user_key), ("message", String::from(msg))];
 
     let body = form_urlencoded::Serializer::new(String::new())
@@ -43,20 +76,16 @@ fn push_msg(cfg: Config, msg: &str) -> Result<(), Box<Error>> {
     let tls = NativeTlsClient::new()?;
     let connector = HttpsConnector::new(tls);
     let client = Client::with_connector(connector);
-    let mut response = client.post("https://api.pushover.net/1/messages.json").body(&body[..]).send()?;
 
-    Ok(())
-}
+    let response = client.post("https://api.pushover.net/1/messages.json").body(&body[..]).send()?;
 
-/*
-fn get_content(url: &str) -> hyper::Result<String> {
-    let client = Client::new();
-    let mut response = client.get(url).send()?;
-    let mut buf = String::new();
-    response.read_to_string(&mut buf)?;
-    Ok(buf)
+    let po_response: PoResponse = serde_json::from_reader(response)?;
+
+    match po_response.status {
+        1 => Ok(po_response.request),
+        _ => Err(PodogError::Service(po_response.errors)),
+    }
 }
-*/
 
 fn main() {
     let cfg: Config = match load_cfg() {
@@ -64,17 +93,8 @@ fn main() {
         Err(_) => panic!("Failed to load cfg"),
     };
 
-    /*
-    let buf = match get_content("http://httpbin.org/status/200") {
-        Ok(r) => r,
-        Err(e) => panic!("oh shit, {}", e),
-    };
-
-    println!("buf: {}", buf);
-    */
-
     match push_msg(cfg, "this is a test") {
-        Ok(_) => println!("pushed!"),
-        Err(e) => panic!("failed to push, {}", e),
+        Ok(s) => println!("pushed!, request: {}", s),
+        Err(e) => panic!("failed to push, {:?}", e),
     };
 }
