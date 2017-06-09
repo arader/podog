@@ -69,8 +69,8 @@ fn load_cfg() -> Result<Config, Box<Error>> {
     Ok(cfg)
 }
 
-fn push_msg(cfg: Config, msg: &str) -> Result<String, PodogError> {
-    let query = vec![("token", cfg.api_key), ("user", cfg.user_key), ("message", String::from(msg))];
+fn push_msg(cfg: Config, title: &str, msg: &str) -> Result<String, PodogError> {
+    let query = vec![("token", cfg.api_key), ("user", cfg.user_key), ("title", String::from(title)), ("message", String::from(msg))];
 
     let body = form_urlencoded::Serializer::new(String::new())
         .extend_pairs(query.iter())
@@ -98,6 +98,10 @@ fn main() {
         .arg(Arg::with_name("message")
              .index(1)
              .required(true))
+        .arg(Arg::with_name("title")
+             .short("t")
+             .long("title")
+             .takes_value(true))
         .get_matches();
 
     let cfg: Config = match load_cfg() {
@@ -105,7 +109,7 @@ fn main() {
         Err(_) => panic!("Failed to load cfg"),
     };
 
-    match push_msg(cfg, matches.value_of("message").unwrap()) {
+    match push_msg(cfg, matches.value_of("title").unwrap_or(""), matches.value_of("message").unwrap()) {
         Ok(s) => println!("pushed!, request: {}", s),
         Err(e) => panic!("failed to push, {:?}", e),
     };
