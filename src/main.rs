@@ -69,8 +69,12 @@ fn load_cfg() -> Result<Config, Box<Error>> {
     Ok(cfg)
 }
 
-fn push_msg(cfg: Config, title: &str, msg: &str) -> Result<String, PodogError> {
-    let query = vec![("token", cfg.api_key), ("user", cfg.user_key), ("title", String::from(title)), ("message", String::from(msg))];
+fn push_msg(cfg: Config, html: bool, title: &str, msg: &str) -> Result<String, PodogError> {
+    let mut query = vec![("token", cfg.api_key), ("user", cfg.user_key), ("title", String::from(title)), ("message", String::from(msg))];
+
+    if html {
+        query.push(("html", String::from("1")));
+    }
 
     let body = form_urlencoded::Serializer::new(String::new())
         .extend_pairs(query.iter())
@@ -102,6 +106,8 @@ fn main() {
              .short("t")
              .long("title")
              .takes_value(true))
+        .arg(Arg::with_name("html")
+             .long("html"))
         .get_matches();
 
     let cfg: Config = match load_cfg() {
@@ -109,7 +115,10 @@ fn main() {
         Err(_) => panic!("Failed to load cfg"),
     };
 
-    match push_msg(cfg, matches.value_of("title").unwrap_or(""), matches.value_of("message").unwrap()) {
+    match push_msg(cfg,
+                   matches.is_present("html"),
+                   matches.value_of("title").unwrap_or(""),
+                   matches.value_of("message").unwrap()) {
         Ok(s) => println!("pushed!, request: {}", s),
         Err(e) => panic!("failed to push, {:?}", e),
     };
