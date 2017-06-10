@@ -75,7 +75,8 @@ fn push_msg(
     title: &str,
     msg: &str,
     url: &str,
-    url_title: &str) -> Result<String, PodogError> {
+    url_title: &str,
+    devices: &str) -> Result<String, PodogError> {
     let mut query = vec![("token", cfg.api_key), ("user", cfg.user_key), ("title", String::from(title)), ("message", String::from(msg))];
 
     if html {
@@ -88,6 +89,10 @@ fn push_msg(
 
     if !url_title.is_empty() {
         query.push(("url_title", String::from(url_title)));
+    }
+
+    if !devices.is_empty() {
+        query.push(("device", String::from(devices)));
     }
 
     let body = form_urlencoded::Serializer::new(String::new())
@@ -129,6 +134,10 @@ fn main() {
         .arg(Arg::with_name("url_title")
              .long("url-title")
              .takes_value(true))
+        .arg(Arg::with_name("devices")
+             .long("devices")
+             .short("d")
+             .takes_value(true))
         .get_matches();
 
     let cfg: Config = match load_cfg() {
@@ -141,7 +150,8 @@ fn main() {
                    matches.value_of("title").unwrap_or(""),
                    matches.value_of("message").unwrap(),
                    matches.value_of("url").unwrap_or(""),
-                   matches.value_of("url_title").unwrap_or("")) {
+                   matches.value_of("url_title").unwrap_or(""),
+                   matches.value_of("devices").unwrap_or("")) {
         Ok(s) => println!("pushed!, request: {}", s),
         Err(e) => panic!("failed to push, {:?}", e),
     };
