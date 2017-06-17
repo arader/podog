@@ -77,7 +77,10 @@ fn push_msg(
     url: &str,
     url_title: &str,
     devices: &str,
-    sound: &str) -> Result<String, PodogError> {
+    sound: &str,
+    priority: &str,
+    retry: &str,
+    expires: &str) -> Result<String, PodogError> {
     let mut query = vec![("token", cfg.api_key), ("user", cfg.user_key), ("title", String::from(title)), ("message", String::from(msg))];
 
     if html {
@@ -100,6 +103,18 @@ fn push_msg(
         query.push(("sound", String::from(sound)));
     }
 
+    if !priority.is_empty() {
+        query.push(("priority", String::from(priority)));
+    }
+
+    if !retry.is_empty() {
+        query.push(("retry", String::from(retry)));
+    }
+
+    if !expires.is_empty() {
+        query.push(("expire", String::from(expires)));
+    }
+
     let body = form_urlencoded::Serializer::new(String::new())
         .extend_pairs(query.iter())
         .finish();
@@ -115,6 +130,34 @@ fn push_msg(
     match po_response.status {
         1 => Ok(po_response.request),
         _ => Err(PodogError::Service(po_response.errors)),
+    }
+}
+
+fn retry_validator(val: String) -> Result<(), String> {
+    match val.parse::<u32>() {
+        Ok(v) => {
+            if v >= 30 {
+                Ok(())
+            }
+            else {
+                Err(String::from("must be at least 30 seconds"))
+            }
+        },
+        Err(_) => return Err(String::from("must be the number of seconds between retries")),
+    }
+}
+
+fn expires_validator(val: String) -> Result<(), String> {
+    match val.parse::<u32>() {
+        Ok(v) => {
+            if v <= 10800 {
+                Ok(())
+            }
+            else {
+                Err(String::from("must be less than 10800 seconds"))
+            }
+        },
+        Err(_) => return Err(String::from("must be the number of seconds until retries are stopped")),
     }
 }
 
@@ -147,6 +190,27 @@ fn main() {
              .long("sound")
              .short("s")
              .takes_value(true))
+        .arg(Arg::with_name("priority")
+             .long("priority")
+             .short("p")
+             .takes_value(true)
+             .possible_values(&["-2", "-1", "0", "1", "2"]))
+        .arg(Arg::with_name("retry")
+             .long("retry")
+             .short("r")
+             .takes_value(true)
+             .value_name("seconds")
+             .validator(retry_validator)
+             .required_if("priority", "2")
+             .help("number of seconds between retries, min: 30"))
+        .arg(Arg::with_name("expires")
+             .long("expires")
+             .short("e")
+             .takes_value(true)
+             .value_name("seconds")
+             .validator(expires_validator)
+             .required_if("priority", "2")
+             .help("number of seconds to keep retrying, max: 10800 (3 hours)"))
         .get_matches();
 
     let cfg: Config = match load_cfg() {
@@ -161,7 +225,10 @@ fn main() {
                    matches.value_of("url").unwrap_or(""),
                    matches.value_of("url_title").unwrap_or(""),
                    matches.value_of("devices").unwrap_or(""),
-                   matches.value_of("sound").unwrap_or("")) {
+                   matches.value_of("sound").unwrap_or(""),
+                   matches.value_of("priority").unwrap_or(""),
+                   matches.value_of("retry").unwrap_or(""),
+                   matches.value_of("expires").unwrap_or("")) {
         Ok(s) => println!("pushed!, request: {}", s),
         Err(e) => panic!("failed to push, {:?}", e),
     };
