@@ -70,7 +70,7 @@ fn load_cfg() -> Result<Config, Box<Error>> {
 }
 
 fn push_msg(
-    cfg: Config,
+    cfg: &Config,
     html: bool,
     title: &str,
     msg: &str,
@@ -81,38 +81,38 @@ fn push_msg(
     priority: &str,
     retry: &str,
     expires: &str) -> Result<String, PodogError> {
-    let mut query = vec![("token", cfg.api_key), ("user", cfg.user_key), ("title", String::from(title)), ("message", String::from(msg))];
+    let mut query = vec![("token", cfg.api_key.as_str()), ("user", cfg.user_key.as_str()), ("title", title), ("message", msg)];
 
     if html {
-        query.push(("html", String::from("1")));
+        query.push(("html", "1"));
     }
 
     if !url.is_empty() {
-        query.push(("url", String::from(url)));
+        query.push(("url", url));
     }
 
     if !url_title.is_empty() {
-        query.push(("url_title", String::from(url_title)));
+        query.push(("url_title", url_title));
     }
 
     if !devices.is_empty() {
-        query.push(("device", String::from(devices)));
+        query.push(("device", devices));
     }
 
     if !sound.is_empty() {
-        query.push(("sound", String::from(sound)));
+        query.push(("sound", sound));
     }
 
     if !priority.is_empty() {
-        query.push(("priority", String::from(priority)));
+        query.push(("priority", priority));
     }
 
     if !retry.is_empty() {
-        query.push(("retry", String::from(retry)));
+        query.push(("retry", retry));
     }
 
     if !expires.is_empty() {
-        query.push(("expire", String::from(expires)));
+        query.push(("expire", expires));
     }
 
     let body = form_urlencoded::Serializer::new(String::new())
@@ -227,7 +227,7 @@ fn main() {
         Err(_) => panic!("Failed to load cfg"),
     };
 
-    match push_msg(cfg,
+    match push_msg(&cfg,
                    matches.is_present("html"),
                    matches.value_of("title").unwrap_or(""),
                    matches.value_of("message").unwrap(),
