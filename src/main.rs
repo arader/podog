@@ -8,7 +8,7 @@ extern crate url;
 #[macro_use]
 extern crate serde_derive;
 
-use std::env;
+use std::{env, thread, time};
 use std::error::Error;
 use std::fs::File;
 
@@ -25,11 +25,28 @@ struct Config {
 }
 
 #[derive(Deserialize)]
-struct PoResponse {
+struct PushResponse {
     status: u32,
     request: String,
     #[serde(default)]
+    receipt: String,
+    #[serde(default)]
     errors: Vec<String>,
+}
+
+#[derive(Deserialize)]
+struct ReceiptResponse {
+    status: u32,
+    acknowledged: u32,
+    acknowledged_at: u32,
+    acknowledged_by: String,
+    acknowledged_by_device: String,
+    #[serde(default)]
+    last_delevered_at: u32,
+    expired: u32,
+    expires_at: u32,
+    called_back: u32,
+    called_back_at: u32,
 }
 
 #[derive(Debug)]
@@ -80,7 +97,7 @@ fn push_msg(
     sound: &str,
     priority: &str,
     retry: &str,
-    expires: &str) -> Result<String, PodogError> {
+    expires: &str) -> Result<PushResponse, PodogError> {
     let mut query = vec![("token", cfg.api_key.as_str()), ("user", cfg.user_key.as_str()), ("title", title), ("message", msg)];
 
     if html {
@@ -125,11 +142,28 @@ fn push_msg(
 
     let response = client.post("https://api.pushover.net/1/messages.json").body(&body[..]).send()?;
 
-    let po_response: PoResponse = serde_json::from_reader(response)?;
+    let po_response: PushResponse = serde_json::from_reader(response)?;
 
     match po_response.status {
-        1 => Ok(po_response.request),
+        1 => Ok(po_response),
         _ => Err(PodogError::Service(po_response.errors)),
+    }
+}
+
+fn check_receipt(
+    cfg: &Config,
+    receipt: &str) -> Result<ReceiptResponse, PodogError> {
+    let tls = NativeTlsClient::new()?;
+    let connector = HttpsConnector::new(tls);
+    let client = Client::with_connector(connector);
+
+    let response = client.get(&(format!("https://api.pushover.net/1/receipts/{}.json?token={}", receipt, cfg.api_key))[..]).send()?;
+
+    let po_response: ReceiptResponse = serde_json::from_reader(response)?;
+
+    match po_response.status {
+        1 => Ok(po_response),
+        _ => Err(PodogError::Service(vec![String::from("failed to query receipt status")])),
     }
 }
 
@@ -220,6 +254,10 @@ fn main() {
              .validator(expires_validator)
              .required_if("priority", "2")
              .help("number of seconds to keep retrying, max: 10800 (3 hours)"))
+        .arg(Arg::with_name("wait")
+             .long("wait")
+             .short("w")
+             .help("wait until the notification is acknowledged"))
         .get_matches();
 
     let cfg: Config = match load_cfg() {
@@ -227,7 +265,7 @@ fn main() {
         Err(_) => panic!("Failed to load cfg"),
     };
 
-    match push_msg(&cfg,
+    let response: PushResponse = match push_msg(&cfg,
                    matches.is_present("html"),
                    matches.value_of("title").unwrap_or(""),
                    matches.value_of("message").unwrap(),
@@ -238,7 +276,29 @@ fn main() {
                    matches.value_of("priority").unwrap_or(""),
                    matches.value_of("retry").unwrap_or(""),
                    matches.value_of("expires").unwrap_or("")) {
-        Ok(s) => println!("pushed!, request: {}", s),
+        Ok(r) => r,
         Err(e) => panic!("failed to push, {:?}", e),
     };
+
+    if matches.is_present("wait") {
+        if response.receipt.is_empty() {
+            panic!("request {} did not return a receipt to wait", response.request);
+        }
+        else {
+            loop {
+                thread::sleep(time::Duration::from_secs(5));
+
+                match check_receipt(&cfg, response.receipt.as_str()) {
+                    Ok(result) => {
+                        println!("response: {}", result.acknowledged);
+                        if result.acknowledged == 1 {
+                            break;
+                        }
+                    },
+                    Err(_) => (),
+                    //Err(_) => println!("failed to get response, continuing"),
+                }
+            }
+        }
+    }
 }
