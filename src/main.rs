@@ -41,8 +41,7 @@ struct ReceiptResponse {
     acknowledged_at: u32,
     acknowledged_by: String,
     acknowledged_by_device: String,
-    #[serde(default)]
-    last_delevered_at: u32,
+    last_delivered_at: u32,
     expired: u32,
     expires_at: u32,
     called_back: u32,
@@ -262,7 +261,7 @@ fn main() {
 
     let cfg: Config = match load_cfg() {
         Ok(c) => c,
-        Err(_) => panic!("Failed to load cfg"),
+        Err(_) => panic!("failed to load cfg"),
     };
 
     let response: PushResponse = match push_msg(&cfg,
@@ -285,18 +284,29 @@ fn main() {
             panic!("request {} did not return a receipt to wait", response.request);
         }
         else {
+            let mut failures = 0;
+
             loop {
                 thread::sleep(time::Duration::from_secs(5));
 
                 match check_receipt(&cfg, response.receipt.as_str()) {
                     Ok(result) => {
-                        println!("response: {}", result.acknowledged);
+                        failures = 0;
                         if result.acknowledged == 1 {
                             break;
                         }
+                        else if result.expired == 1 {
+                            println!("notification expired");
+                            break;
+                        }
                     },
-                    Err(_) => (),
-                    //Err(_) => println!("failed to get response, continuing"),
+                    Err(_) => {
+                        failures = failures + 1;
+                        if failures == 5 {
+                            panic!("failed to wait for receipt");
+                            break;
+                        }
+                    },
                 }
             }
         }
