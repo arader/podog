@@ -11,6 +11,7 @@ extern crate serde_derive;
 use std::{env, thread, time};
 use std::error::Error;
 use std::fs::File;
+use std::io::Write;
 
 use clap::{Arg, App};
 use hyper::Client;
@@ -27,7 +28,7 @@ struct Config {
 #[derive(Deserialize)]
 struct PushResponse {
     status: u32,
-    request: String,
+    //request: String,
     #[serde(default)]
     receipt: String,
     #[serde(default)]
@@ -38,14 +39,14 @@ struct PushResponse {
 struct ReceiptResponse {
     status: u32,
     acknowledged: u32,
-    acknowledged_at: u32,
-    acknowledged_by: String,
-    acknowledged_by_device: String,
-    last_delivered_at: u32,
+    //acknowledged_at: u32,
+    //acknowledged_by: String,
+    //acknowledged_by_device: String,
+    //last_delivered_at: u32,
     expired: u32,
-    expires_at: u32,
-    called_back: u32,
-    called_back_at: u32,
+    //expires_at: u32,
+    //called_back: u32,
+    //called_back_at: u32,
 }
 
 #[derive(Debug)]
@@ -195,6 +196,17 @@ fn expires_validator(val: String) -> Result<(), String> {
 }
 
 fn main() {
+    std::process::exit(match inner_main() {
+        Ok(_) => 0,
+        Err(n) => {
+            //println!("{}", n.1);
+            writeln!(std::io::stderr(), "error: {}", n.1).expect("failed to write to stderr");
+            n.0
+        },
+    });
+}
+
+fn inner_main() -> Result<(), (i32, &'static str)> {
     let matches = App::new("podog")
         .version("0.1.0")
         .author("Andrew Rader <ardr@outlook.com>")
@@ -259,12 +271,9 @@ fn main() {
              .help("wait until the notification is acknowledged"))
         .get_matches();
 
-    let cfg: Config = match load_cfg() {
-        Ok(c) => c,
-        Err(_) => panic!("failed to load cfg"),
-    };
+    let cfg: Config = load_cfg().map_err(|_| {(127, "failed to load config")})?;
 
-    let response: PushResponse = match push_msg(&cfg,
+    let response: PushResponse = push_msg(&cfg,
                    matches.is_present("html"),
                    matches.value_of("title").unwrap_or(""),
                    matches.value_of("message").unwrap(),
@@ -274,14 +283,11 @@ fn main() {
                    matches.value_of("sound").unwrap_or(""),
                    matches.value_of("priority").unwrap_or(""),
                    matches.value_of("retry").unwrap_or(""),
-                   matches.value_of("expires").unwrap_or("")) {
-        Ok(r) => r,
-        Err(e) => panic!("failed to push, {:?}", e),
-    };
+                   matches.value_of("expires").unwrap_or("")).map_err(|_| {(2, "failed to push message")})?;
 
     if matches.is_present("wait") {
         if response.receipt.is_empty() {
-            panic!("request {} did not return a receipt to wait", response.request);
+            return Err((3, "no receipt to wait on"));
         }
         else {
             let mut failures = 0;
@@ -296,19 +302,19 @@ fn main() {
                             break;
                         }
                         else if result.expired == 1 {
-                            println!("notification expired");
-                            break;
+                            return Err((4, "notification expired"));
                         }
                     },
                     Err(_) => {
                         failures = failures + 1;
                         if failures == 5 {
-                            panic!("failed to wait for receipt");
-                            break;
+                            return Err((5, "failure waiting for receipt"));
                         }
                     },
                 }
             }
         }
     }
+
+    return Ok(());
 }
